@@ -26,6 +26,13 @@
       game must keep running standalone, and it does.
     -->
     <script src="/sdk/gamehub-sdk.js"></script>
+    <script>
+      // The absolute path above only resolves when the PLATFORM serves this build.
+      // On any other host it 404s, and without an SDK the game is silently mute.
+      if (!window.GameHubSDK) {
+        document.write('<script src="gamehub-sdk.js"><\/script>');
+      }
+    </script>
 
     <style>
       html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
