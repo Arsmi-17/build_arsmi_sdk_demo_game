@@ -3,9 +3,9 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | ArsmiGames_SDK</title>
+    <title>Unity Web Player | BoardGames</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
-    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}#unity-container{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden}#unity-canvas{display:block;width:100%!important;height:100%!important;background:#000}#unity-loading-bar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}#unity-footer{display:none!important}</style>
   </head>
   <body>
     <div id="unity-container" class="unity-desktop">
@@ -20,11 +20,26 @@
       <div id="unity-footer">
         <div id="unity-logo-title-footer"></div>
         <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">ArsmiGames_SDK</div>
+        <div id="unity-build-title">BoardGames</div>
       </div>
     </div>
     <script>
       var canvas = document.querySelector("#unity-canvas");
+
+      // Tell the embedding platform how far along we are. Without this it can only
+      // see the iframe's load event -- which fires long before the engine has
+      // downloaded and compiled -- so it hides its loading screen and the player
+      // sees a black frame until Unity finally paints.
+      function postToPlatform(type, payload) {
+        try {
+          if (window.parent && window.parent !== window) {
+            var msg = { type: type, ts: Date.now(), version: 1 };
+            for (var k in (payload || {})) msg[k] = payload[k];
+            window.parent.postMessage(msg, "*");
+          }
+        } catch (e) { /* not embedded, or blocked */ }
+      }
+      postToPlatform("gamehub:unity:progress", { progress: 0 });
 
       // Shows a temporary message banner/ribbon for a few seconds, or
       // a permanent error message on top of the canvas if type=='error'.
@@ -51,7 +66,7 @@
         updateBannerVisibility();
       }
 
-      var buildUrl = "Build";
+       var buildUrl = "Build";
       var loaderUrl = buildUrl + "/arsmisdk_demo.loader.js";
       var config = {
         arguments: [],
@@ -63,12 +78,11 @@
         productName: "ArsmiGames_SDK",
         productVersion: "1.0",
         showBanner: unityShowBanner,
-        // errorHandler: function(err, url, line) {
-        //    alert("error " + err + " occurred at line " + line);
-        //    // Return 'true' if you handled this error and don't want Unity
-        //    // to process it further, 'false' otherwise.
-        //    return true;
-        // },
+        devicePixelRatio: Math.min(
+          (/Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent) ||
+            (window.matchMedia && window.matchMedia('(pointer: coarse)').matches)) ? 1 : 2,
+          Math.max(1, window.devicePixelRatio || 1)
+        ),
       };
 
       // By default, Unity keeps WebGL canvas render target size matched with
@@ -104,25 +118,26 @@
 
       } else {
         // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width = "960px";
-        canvas.style.height = "600px";
+        canvas.style.width="100%";
+        canvas.style.height="100%";
       }
 
       document.querySelector("#unity-loading-bar").style.display = "block";
+
+      canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); unityShowBanner('WebGL context lost.', 'error'); });
 
       var script = document.createElement("script");
       script.src = loaderUrl;
       script.onload = () => {
         createUnityInstance(canvas, config, (progress) => {
           document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
+          postToPlatform("gamehub:unity:progress", { progress: progress });
               }).then((unityInstance) => {
                 document.querySelector("#unity-loading-bar").style.display = "none";
-                document.querySelector("#unity-fullscreen-button").onclick = () => {
-                  unityInstance.SetFullscreen(1);
-                };
-
+                postToPlatform("gamehub:unity:ready", {});
               }).catch((message) => {
-                alert(message);
+                postToPlatform("gamehub:unity:error", { error: String(message) });
+                unityShowBanner(message, 'error');
               });
             };
 
