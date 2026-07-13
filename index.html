@@ -3,42 +3,61 @@
   <head>
     <meta charset="utf-8">
     <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-    <title>Unity Web Player | BoardGames</title>
+    <title>ArsmiGames_SDK</title>
     <link rel="shortcut icon" href="TemplateData/favicon.ico">
 
     <!--
-      The platform SDK. GameHubBridge.jslib only wires itself up if
-      window.GameHubSDK already exists, so without this the bridge is never
-      created and every call from C# is a silent no-op in both directions.
+      The platform SDK. Without this the game cannot talk to Arsmi Games at all.
 
-      Must load before the Unity instance starts — C# Awake() calls into it.
+      GameHubBridge.jslib only wires itself up if window.GameHubSDK already exists:
+
+          if (!window.GameHubBridge && window.GameHubSDK) { ...create... }
+
+      so if this script is missing, window.GameHubBridge is never created, every
+      Emit from C# is a silent no-op, and no listeners are installed — the game
+      neither sends nor receives anything, with no error to tell you why. Unity's
+      stock template does not include it, which is why this template exists.
+
+      It must load before the Unity instance starts, because C# Awake() calls into
+      the bridge. Keep it in <head>.
+
+      The path is absolute: the platform serves the game from its own origin
+      (/unity/<slug>/...), so /sdk/ resolves to the platform's copy of the SDK.
+      Opening index.html straight off disk will 404 here, and that is fine — the
+      game must keep running standalone, and it does.
     -->
     <script src="/sdk/gamehub-sdk.js"></script>
-    <style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}#unity-container{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden}#unity-canvas{display:block;width:100%!important;height:100%!important;background:#000}#unity-loading-bar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%)}#unity-footer{display:none!important}</style>
+
+    <style>
+      html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+      #unity-container{position:fixed;inset:0;width:100vw;height:100vh;overflow:hidden}
+      #unity-canvas{display:block;width:100%!important;height:100%!important;background:#000}
+      #unity-loading-bar{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);display:none}
+      #unity-progress-bar-empty{width:200px;height:6px;background:#1c1b20;border-radius:3px;overflow:hidden}
+      #unity-progress-bar-full{width:0;height:100%;background:#cc785c}
+      #unity-footer{display:none!important}
+      #unity-warning{position:absolute;left:50%;top:5%;transform:translate(-50%);background:#000;color:#fff}
+    </style>
   </head>
   <body>
-    <div id="unity-container" class="unity-desktop">
+    <div id="unity-container">
       <canvas id="unity-canvas" width=960 height=600 tabindex="-1"></canvas>
       <div id="unity-loading-bar">
-        <div id="unity-logo"></div>
         <div id="unity-progress-bar-empty">
           <div id="unity-progress-bar-full"></div>
         </div>
       </div>
-      <div id="unity-warning"> </div>
-      <div id="unity-footer">
-        <div id="unity-logo-title-footer"></div>
-        <div id="unity-fullscreen-button"></div>
-        <div id="unity-build-title">BoardGames</div>
-      </div>
+      <div id="unity-warning"></div>
+      <div id="unity-footer"></div>
     </div>
+
     <script>
       var canvas = document.querySelector("#unity-canvas");
 
-      // Tell the embedding platform how far along we are. Without this it can only
-      // see the iframe's load event -- which fires long before the engine has
-      // downloaded and compiled -- so it hides its loading screen and the player
-      // sees a black frame until Unity finally paints.
+      // Report engine progress to the platform. Without this it can only see the
+      // iframe's load event, which fires long before the wasm has downloaded and
+      // compiled — so it would hide its loading screen and leave the player
+      // staring at a black frame until Unity finally paints.
       function postToPlatform(type, payload) {
         try {
           if (window.parent && window.parent !== window) {
@@ -50,12 +69,6 @@
       }
       postToPlatform("gamehub:unity:progress", { progress: 0 });
 
-      // Shows a temporary message banner/ribbon for a few seconds, or
-      // a permanent error message on top of the canvas if type=='error'.
-      // If type=='warning', a yellow highlight color is used.
-      // Modify or remove this function to customize the visually presented
-      // way that non-critical warnings and error messages are presented to the
-      // user.
       function unityShowBanner(msg, type) {
         var warningBanner = document.querySelector("#unity-warning");
         function updateBannerVisibility() {
@@ -67,7 +80,7 @@
         if (type == 'error') div.style = 'background: red; padding: 10px;';
         else {
           if (type == 'warning') div.style = 'background: yellow; padding: 10px;';
-          setTimeout(function() {
+          setTimeout(function () {
             warningBanner.removeChild(div);
             updateBannerVisibility();
           }, 5000);
@@ -75,7 +88,7 @@
         updateBannerVisibility();
       }
 
-       var buildUrl = "Build";
+      var buildUrl = "Build";
       var loaderUrl = buildUrl + "/arsmisdk_demo.loader.js";
       var config = {
         arguments: [],
@@ -94,64 +107,37 @@
         ),
       };
 
-      // By default, Unity keeps WebGL canvas render target size matched with
-      // the DOM size of the canvas element (scaled by window.devicePixelRatio)
-      // Set this to false if you want to decouple this synchronization from
-      // happening inside the engine, and you would instead like to size up
-      // the canvas DOM size and WebGL render target sizes yourself.
-      // config.matchWebGLToCanvasSize = false;
-
-      // If you would like all file writes inside Unity Application.persistentDataPath
-      // directory to automatically persist so that the contents are remembered when
-      // the user revisits the site the next time, uncomment the following line:
-      // config.autoSyncPersistentDataPath = true;
-      // This autosyncing is currently not the default behavior to avoid regressing
-      // existing user projects that might rely on the earlier manual
-      // JS_FileSystem_Sync() behavior, but in future Unity version, this will be
-      // expected to change.
-
       if (/iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) {
-        // Mobile device style: fill the whole browser client area with the game canvas:
-
         var meta = document.createElement('meta');
         meta.name = 'viewport';
         meta.content = 'width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes';
         document.getElementsByTagName('head')[0].appendChild(meta);
-        document.querySelector("#unity-container").className = "unity-mobile";
-        canvas.className = "unity-mobile";
-
-        // To lower canvas resolution on mobile devices to gain some
-        // performance, uncomment the following line:
-        // config.devicePixelRatio = 1;
-
-
-      } else {
-        // Desktop style: Render the game canvas in a window that can be maximized to fullscreen:
-        canvas.style.width="100%";
-        canvas.style.height="100%";
       }
+      canvas.style.width = "100%";
+      canvas.style.height = "100%";
 
       document.querySelector("#unity-loading-bar").style.display = "block";
-
-      canvas.addEventListener('webglcontextlost', function (e) { e.preventDefault(); unityShowBanner('WebGL context lost.', 'error'); });
+      canvas.addEventListener('webglcontextlost', function (e) {
+        e.preventDefault();
+        unityShowBanner('WebGL context lost.', 'error');
+      });
 
       var script = document.createElement("script");
       script.src = loaderUrl;
-      script.onload = () => {
-        createUnityInstance(canvas, config, (progress) => {
+      script.onload = function () {
+        createUnityInstance(canvas, config, function (progress) {
           document.querySelector("#unity-progress-bar-full").style.width = 100 * progress + "%";
           postToPlatform("gamehub:unity:progress", { progress: progress });
-              }).then((unityInstance) => {
-                document.querySelector("#unity-loading-bar").style.display = "none";
-                postToPlatform("gamehub:unity:ready", {});
-              }).catch((message) => {
-                postToPlatform("gamehub:unity:error", { error: String(message) });
-                unityShowBanner(message, 'error');
-              });
-            };
-
+        }).then(function (unityInstance) {
+          document.querySelector("#unity-loading-bar").style.display = "none";
+          window.unityInstance = unityInstance;
+          postToPlatform("gamehub:unity:ready", {});
+        }).catch(function (message) {
+          postToPlatform("gamehub:unity:error", { error: String(message) });
+          unityShowBanner(message, 'error');
+        });
+      };
       document.body.appendChild(script);
-
     </script>
   </body>
 </html>
